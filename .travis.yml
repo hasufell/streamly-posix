@@ -1,0 +1,38 @@
+# See https://github.com/hvr/multi-ghc-travis for more information
+
+language: c
+
+sudo: required
+dist: trusty
+
+matrix:
+  include:
+    - env: CABALVER=3.0 GHCVER=8.6.5
+      addons: {apt: {packages: [cabal-install-3.0,ghc-8.6.5], sources: [hvr-ghc]}}
+    - env: CABALVER=3.0 GHCVER=8.8.1
+      addons: {apt: {packages: [cabal-install-3.0,ghc-8.8.1], sources: [hvr-ghc]}}
+    - env: CABALVER=head GHCVER=head
+      addons: {apt: {packages: [cabal-install-head,ghc-head],  sources: [hvr-ghc]}}
+
+  allow_failures:
+    - env: CABALVER=head GHCVER=head
+
+before_install:
+ - sudo apt-get install -y hscolour
+ - export PATH=~/.cabal/bin:/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+
+install:
+ - cabal --version
+ - travis_retry cabal update
+ - cabal install --installdir=$HOME/.cabal/bin hspec-discover
+
+script:
+ - cabal build --enable-tests all
+ - cabal test all
+ - cabal haddock --haddock-hyperlink-source --haddock-html-location=https://hackage.haskell.org/package/\$pkg-\$version/docs/ all
+ - cabal install --lib all
+
+notifications:
+  email:
+    - hasufell@posteo.de
+
