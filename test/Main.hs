@@ -1,17 +1,42 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
+import           Data.Foldable
+import           Data.List                      ( sortBy )
 import           GHC.IO.Handle                  ( Handle )
-import           System.IO                      ( openFile
-                                                , IOMode(ReadMode)
-                                                )
-import           System.IO.Temp                 ( withSystemTempFile )
+import           System.IO
+import           System.IO.Temp
 import           Test.Hspec
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BSL
-import           Streamly.External.FileSystem.Handle.Posix
+import           Streamly.External.FileSystem.Handle
+import System.FilePath
+#if !defined(mingw32_HOST_OS)
+import           Streamly.External.FileSystem.DirStream.Posix
+import           System.Posix.Directory as Posix
+import           System.Posix.Foreign
+
+
+
+checkDirContents :: FilePath -> IO ()
+checkDirContents fp = do
+  let f1 = fp </> "f1"
+  let f2 = fp </> "f2"
+  let f3 = fp </> "f3"
+  let f4 = fp </> "f4"
+  for_ [f1, f2, f3, f4] $ \f -> openFile f ReadWriteMode
+  ds       <- Posix.openDirStream fp
+  contents <- fmap (sortBy (\(_, y) (_, z) -> compare y z)) $ dirContents ds
+  contents
+    `shouldBe` [ (DirType 8, "f1")
+               , (DirType 8, "f2")
+               , (DirType 8, "f3")
+               , (DirType 8, "f4")
+               ]
+#endif
 
 
 checkCopyLBS :: FilePath -> Handle -> IO ()
@@ -50,3 +75,6 @@ main = hspec $ do
     it "copyFileHandle" $ withSystemTempFile
       "x"
       (\_ h1 -> withSystemTempFile "y" $ (\_ h2 -> checkCopyFileHandle h1 h2))
+#if !defined(mingw32_HOST_OS)
+    it "dirContents" $ withSystemTempDirectory "y" checkDirContents
+#endif

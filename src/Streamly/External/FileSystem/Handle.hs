@@ -1,8 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiWayIf       #-}
 
 -- |
--- Module      :  Streamly.External.FileSystem.Handle.Posix
+-- Module      :  Streamly.External.FileSystem.Handle
 -- Copyright   :  © 2020 Julian Ospald
 -- License     :  BSD3
 --
@@ -10,8 +9,9 @@
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- This module provides high-level file streaming API.
-module Streamly.External.FileSystem.Handle.Posix
+-- This module provides high-level file streaming API, working
+-- with file handles.
+module Streamly.External.FileSystem.Handle
   (
   -- * File reading
     readFileLBS
@@ -25,42 +25,25 @@ module Streamly.External.FileSystem.Handle.Posix
   , copyFileStream'
   , copyLBS
   , copyLBS'
-  -- * Directory listing
-  , unfoldDirContents
-  , dirContentsStream
-  , dirContents
   )
 where
 
 import           Control.Exception.Safe
-import           Control.Monad.IO.Class         ( liftIO
-                                                , MonadIO
-                                                )
+import           Control.Monad.IO.Class         ( liftIO )
 import           Data.Word                      ( Word8 )
-import           Data.Word8
 import           Prelude                 hiding ( readFile )
 import           Streamly
-import           Streamly.Internal.Data.Unfold.Types
 import           Streamly.Memory.Array
 import           System.IO                      ( Handle
                                                 , hClose
                                                 )
 import           System.IO.Unsafe
-import           System.Posix.ByteString
-import           System.Posix.Directory.ByteString
-                                               as PosixBS
-import           System.Posix.Foreign           ( DirType )
-import           System.Posix.RawFilePath.Directory.Traversals
-                                         hiding ( getDirectoryContents )
-import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as L
 import qualified Data.ByteString.Lazy.Internal as BSLI
 import qualified Streamly.External.ByteString  as Strict
 import qualified Streamly.External.ByteString.Lazy
                                                as Lazy
 import qualified Streamly.FileSystem.Handle    as FH
-import qualified Streamly.Internal.Data.Stream.StreamD.Type
-                                               as D
 import qualified Streamly.Internal.Data.Unfold as SIU
 import qualified Streamly.Internal.Prelude     as S
 
@@ -161,38 +144,3 @@ copyLBS' :: (MonadCatch m, MonadAsync m, MonadMask m)
          -> Handle       -- ^ file handle to copy to, must be writable
          -> m ()
 copyLBS' lbs = copyFileStream' (Lazy.toChunks lbs)
-
-
--- | Create an 'Unfold' of directory contents.
-unfoldDirContents :: MonadIO m => Unfold m DirStream (DirType, RawFilePath)
-unfoldDirContents = Unfold step return
- where
-  {-# INLINE [0] step #-}
-  step dirstream = do
-    (typ, e) <- liftIO $ readDirEnt dirstream
-    return if
-      | BS.null e                       -> D.Stop
-      | BS.pack [_period] == e          -> D.Skip dirstream
-      | BS.pack [_period, _period] == e -> D.Skip dirstream
-      | otherwise                       -> D.Yield (typ, e) dirstream
-
-
--- | Read the directory contents as a stream.
---
--- The DirStream is closed automatically, when the streamly stream exits
--- normally, aborts or gets garbage collected.
--- The stream must not be used after the dirstream is closed.
-dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
-                  => DirStream
-                  -> SerialT m (DirType, RawFilePath)
-dirContentsStream =
-  S.unfold (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents)
-
-
--- | Read the directory contents strictly as a list.
---
--- The DirStream is closed automatically.
-dirContents :: (MonadCatch m, MonadAsync m, MonadMask m)
-            => DirStream
-            -> m [(DirType, RawFilePath)]
-dirContents = S.toList . dirContentsStream
