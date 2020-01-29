@@ -1,4 +1,4 @@
-# Revision history for streamly-files
+# Revision history for streamly-filesystem
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

@@ -11,15 +11,20 @@
 -- Portability :  portable
 --
 -- This module provides high-level file streaming API.
-module Streamly.External.FileSystem.Handle.Posix where
+module Streamly.External.FileSystem.Handle.Posix
+  ( readFileLBS
+  , readFileStream
+  , copyFileHandle
+  , copyFileStream
+  , unfoldDirContents
+  , dirContentsStream
+  , DirType
+  )
+where
 
 import           Streamly
 import           Streamly.Memory.Array
-import qualified Streamly.Memory.Array         as A
 import qualified Streamly.FileSystem.Handle    as FH
-import qualified Streamly.Internal.FileSystem.Handle
-                                               as IFH
-import qualified Streamly.Prelude              as S
 import qualified Streamly.Internal.Prelude     as S
 import           System.IO                      ( Handle
                                                 , hClose
@@ -38,12 +43,14 @@ import           System.IO.Unsafe
 import qualified Streamly.Internal.Data.Unfold as SIU
 import           Streamly.Internal.Data.Unfold.Types
 import           System.Posix.RawFilePath.Directory.Traversals
+                                         hiding ( getDirectoryContents )
 import qualified Streamly.Internal.Data.Stream.StreamD.Type
                                                as D
 import           System.Posix.ByteString
 import           System.Posix.Foreign           ( DirType )
 import           System.Posix.Directory.ByteString
                                                as PosixBS
+import           Prelude                 hiding ( readFile )
 
 
 -- |Read the given file lazily as a lazy ByteString.
@@ -52,8 +59,9 @@ import           System.Posix.Directory.ByteString
 -- aborts or gets garbage collected.
 --
 -- This uses `unsafeInterleaveIO` under the hood.
-readFile :: Handle -> IO L.ByteString
-readFile handle' = fromChunks (readFileStream handle')
+readFileLBS :: Handle  -- ^ readable file handle
+            -> IO L.ByteString
+readFileLBS handle' = fromChunks (readFileStream handle')
  where
   -- https://github.com/psibi/streamly-bytestring/issues/7
   fromChunks =
@@ -69,18 +77,15 @@ readFile handle' = fromChunks (readFileStream handle')
 readFileStream :: (MonadCatch m, MonadAsync m)
                => Handle
                -> SerialT m (Array Word8)
-readFileStream = S.unfold
-  (SIU.finallyIO (liftIO . hClose)
-                 FH.readChunks
-  )
+readFileStream = S.unfold (SIU.finallyIO (liftIO . hClose) FH.readChunks)
 
 
 -- | Like 'copyFileStream', except for two file handles.
-copyFile :: (MonadCatch m, MonadAsync m, MonadMask m)
-         => Handle
-         -> Handle
-         -> m ()
-copyFile fromHandle toHandle =
+copyFileHandle :: (MonadCatch m, MonadAsync m, MonadMask m)
+               => Handle  -- ^ copy from this handle, must be readable
+               -> Handle  -- ^ copy to this handle, must be writable
+               -> m ()
+copyFileHandle fromHandle toHandle =
   copyFileStream (readFileStream fromHandle) toHandle
 
 
@@ -89,28 +94,32 @@ copyFile fromHandle toHandle =
 -- The handle is closed automatically after the stream is copied.
 copyFileStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                => SerialT m (Array Word8) -- ^ stream to copy
-               -> Handle                  -- ^ file handle to copy to
+               -> Handle                  -- ^ file handle to copy to, must be writable
                -> m ()
 copyFileStream stream handle' =
   finally (liftIO $ hClose handle') $ S.fold (FH.writeChunks handle') stream
 
 
-unfoldDirectoryContents :: MonadIO m
-                        => Unfold m DirStream (DirType, RawFilePath)
-unfoldDirectoryContents = Unfold step return
+-- | Create an 'Unfold' of directory contents.
+unfoldDirContents :: MonadIO m => Unfold m DirStream (DirType, RawFilePath)
+unfoldDirContents = Unfold step return
  where
   {-# INLINE [0] step #-}
   step dirstream = do
     (typ, e) <- liftIO $ readDirEnt dirstream
     return if
       | BS.null e                       -> D.Stop
-      | BS.pack [_period]          == e -> D.Skip dirstream
+      | BS.pack [_period] == e          -> D.Skip dirstream
       | BS.pack [_period, _period] == e -> D.Skip dirstream
       | otherwise                       -> D.Yield (typ, e) dirstream
 
 
-getDirectoryContents :: (MonadCatch m, MonadAsync m, MonadMask m)
-                     => DirStream
-                     -> SerialT m (DirType, RawFilePath)
-getDirectoryContents = S.unfold
-  (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirectoryContents)
+-- | Read the directory contents as a stream.
+--
+-- The DirStream is closed automatically, when the streamly stream exits
+-- normally, aborts or gets garbage collected.
+dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
+                  => DirStream
+                  -> SerialT m (DirType, RawFilePath)
+dirContentsStream =
+  S.unfold (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents)
