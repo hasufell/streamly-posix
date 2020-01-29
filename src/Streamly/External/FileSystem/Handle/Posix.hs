@@ -15,16 +15,20 @@ module Streamly.External.FileSystem.Handle.Posix
   (
   -- * File reading
     readFileLBS
+  , readFileLBS'
   , readFileStream
+  , readFileStream'
   -- * File writing
   , copyFileHandle
+  , copyFileHandle'
   , copyFileStream
+  , copyFileStream'
   , copyLBS
+  , copyLBS'
   -- * Directory listing
   , unfoldDirContents
   , dirContentsStream
   , dirContents
-  , DirType
   )
 where
 
@@ -61,6 +65,14 @@ import qualified Streamly.Internal.Data.Unfold as SIU
 import qualified Streamly.Internal.Prelude     as S
 
 
+-- https://github.com/psibi/streamly-bytestring/issues/7
+fromChunks :: SerialT IO (Array Word8) -> IO BSLI.ByteString
+fromChunks =
+  S.foldrM (\x b -> unsafeInterleaveIO b >>= pure . BSLI.chunk x)
+           (pure BSLI.Empty)
+    . S.map Strict.fromArray
+
+
 -- |Read the given file lazily as a lazy ByteString.
 --
 -- The handle is closed automatically, when the stream exits normally,
@@ -70,12 +82,16 @@ import qualified Streamly.Internal.Prelude     as S
 readFileLBS :: Handle  -- ^ readable file handle
             -> IO L.ByteString
 readFileLBS handle' = fromChunks (readFileStream handle')
- where
-  -- https://github.com/psibi/streamly-bytestring/issues/7
-  fromChunks =
-    S.foldrM (\x b -> unsafeInterleaveIO b >>= pure . BSLI.chunk x)
-             (pure BSLI.Empty)
-      . S.map Strict.fromArray
+
+
+-- |Read the given file lazily as a lazy ByteString.
+--
+-- The handle is NOT closed automatically.
+--
+-- This uses `unsafeInterleaveIO` under the hood.
+readFileLBS' :: Handle  -- ^ readable file handle
+             -> IO L.ByteString
+readFileLBS' handle' = fromChunks (readFileStream' handle')
 
 
 -- | Read from the given handle as a streamly filestream.
@@ -88,14 +104,35 @@ readFileStream :: (MonadCatch m, MonadAsync m)
                -> SerialT m (Array Word8)
 readFileStream = S.unfold (SIU.finallyIO (liftIO . hClose) FH.readChunks)
 
+-- | Read from the given handle as a streamly filestream.
+--
+-- The handle is NOT closed automatically.
+-- The stream must not be used after the handle is closed.
+readFileStream' :: (MonadCatch m, MonadAsync m)
+                => Handle
+                -> SerialT m (Array Word8)
+readFileStream' = S.unfold FH.readChunks
+
 
 -- | Like 'copyFileStream', except for two file handles.
+--
+-- Both handles are closed automatically.
 copyFileHandle :: (MonadCatch m, MonadAsync m, MonadMask m)
                => Handle  -- ^ copy from this handle, must be readable
                -> Handle  -- ^ copy to this handle, must be writable
                -> m ()
 copyFileHandle fromHandle toHandle =
   copyFileStream (readFileStream fromHandle) toHandle
+
+-- | Like 'copyFileStream'', except for two file handles.
+--
+-- Handles are NOT closed automatically.
+copyFileHandle' :: (MonadCatch m, MonadAsync m, MonadMask m)
+                => Handle  -- ^ copy from this handle, must be readable
+                -> Handle  -- ^ copy to this handle, must be writable
+                -> m ()
+copyFileHandle' fromHandle toHandle =
+  copyFileStream' (readFileStream' fromHandle) toHandle
 
 
 -- | Copy a stream to a file handle.
@@ -106,8 +143,17 @@ copyFileStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                -> Handle                  -- ^ file handle to copy to, must be writable
                -> m ()
 copyFileStream stream handle' =
-  (flip finally) (liftIO $ hClose handle')
-    $ S.fold (FH.writeChunks handle') stream
+  (flip finally) (liftIO $ hClose handle') $ copyFileStream' stream handle'
+
+
+-- | Copy a stream to a file handle.
+--
+-- The handle is NOT closed automatically.
+copyFileStream' :: (MonadCatch m, MonadAsync m, MonadMask m)
+                => SerialT m (Array Word8) -- ^ stream to copy
+                -> Handle                  -- ^ file handle to copy to, must be writable
+                -> m ()
+copyFileStream' stream handle' = S.fold (FH.writeChunks handle') stream
 
 
 -- | Like 'copyFileStream', except with a lazy bytestring.
@@ -118,6 +164,16 @@ copyLBS :: (MonadCatch m, MonadAsync m, MonadMask m)
         -> Handle       -- ^ file handle to copy to, must be writable
         -> m ()
 copyLBS lbs = copyFileStream (Lazy.toChunks lbs)
+
+
+-- | Like 'copyFileStream', except with a lazy bytestring.
+--
+-- The handle is NOT closed automatically.
+copyLBS' :: (MonadCatch m, MonadAsync m, MonadMask m)
+         => L.ByteString -- ^ lazy bytestring to copy
+         -> Handle       -- ^ file handle to copy to, must be writable
+         -> m ()
+copyLBS' lbs = copyFileStream' (Lazy.toChunks lbs)
 
 
 -- | Create an 'Unfold' of directory contents.
