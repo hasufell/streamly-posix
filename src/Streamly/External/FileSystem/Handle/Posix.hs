@@ -12,12 +12,17 @@
 --
 -- This module provides high-level file streaming API.
 module Streamly.External.FileSystem.Handle.Posix
-  ( readFileLBS
+  (
+  -- * File reading
+    readFileLBS
   , readFileStream
+  -- * File writing
   , copyFileHandle
   , copyFileStream
+  -- * Directory listing
   , unfoldDirContents
   , dirContentsStream
+  , dirContents
   , DirType
   )
 where
@@ -77,7 +82,7 @@ readFileLBS handle' = fromChunks (readFileStream handle')
 readFileStream :: (MonadCatch m, MonadAsync m)
                => Handle
                -> SerialT m (Array Word8)
-readFileStream = S.unfold (SIU.finallyIO (liftIO . hClose) FH.readChunks)
+readFileStream = S.unfold (SIU.finallyIO (\h -> liftIO (putStrLn "close readFileStream") >> liftIO (hClose h)) FH.readChunks)
 
 
 -- | Like 'copyFileStream', except for two file handles.
@@ -97,7 +102,7 @@ copyFileStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                -> Handle                  -- ^ file handle to copy to, must be writable
                -> m ()
 copyFileStream stream handle' =
-  finally (liftIO $ hClose handle') $ S.fold (FH.writeChunks handle') stream
+  (flip finally) (liftIO $ hClose handle') $ S.fold (FH.writeChunks handle') stream
 
 
 -- | Create an 'Unfold' of directory contents.
@@ -123,3 +128,13 @@ dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                   -> SerialT m (DirType, RawFilePath)
 dirContentsStream =
   S.unfold (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents)
+
+
+-- | Read the directory contents strictly as a list.
+--
+-- The DirStream is closed automatically.
+dirContents :: (MonadCatch m, MonadAsync m, MonadMask m)
+            => DirStream
+            -> m [(DirType, RawFilePath)]
+dirContents = S.toList . S.unfold
+  (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents)
