@@ -33,6 +33,28 @@ library
   default-language:    Haskell2010
   GHC-Options:         -Wall -O2 -fspec-constr-recursive=16 -fmax-worker-args=16
 
+test-suite sf-test
+  if os(windows) -- not supported yet
+    build-depends: unbuildable<0
+    buildable: False
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:         base                >= 4.12 && < 5
+                       , bytestring
+                       , hpath-directory     >= 0.13
+                       , hspec
+                       , hspec-discover
+                       , safe-exceptions     >= 0.1
+                       , streamly            >= 0.7
+                       , streamly-bytestring >= 0.1.0.1
+                       , streamly-filesystem
+                       , temporary
+                       , unix                >= 2.7
+                       , word8               >= 0.1.3
+  default-language:    Haskell2010
+  GHC-Options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+
 source-repository head
   type:     git
   location: https://github.com/hasufell/streamly-filesystem
