@@ -27,35 +27,35 @@ module Streamly.External.FileSystem.Handle.Posix
   )
 where
 
-import           Streamly
-import           Streamly.Memory.Array
-import qualified Streamly.FileSystem.Handle    as FH
-import qualified Streamly.Internal.Prelude     as S
-import           System.IO                      ( Handle
-                                                , hClose
-                                                )
+import           Control.Exception.Safe
 import           Control.Monad.IO.Class         ( liftIO
                                                 , MonadIO
                                                 )
 import           Data.Word                      ( Word8 )
 import           Data.Word8
-import           Control.Exception.Safe
-import qualified Data.ByteString.Lazy          as L
-import qualified Data.ByteString               as BS
-import qualified Streamly.External.ByteString  as Strict
-import qualified Data.ByteString.Lazy.Internal as BSLI
-import           System.IO.Unsafe
-import qualified Streamly.Internal.Data.Unfold as SIU
+import           Prelude                 hiding ( readFile )
+import           Streamly
 import           Streamly.Internal.Data.Unfold.Types
-import           System.Posix.RawFilePath.Directory.Traversals
-                                         hiding ( getDirectoryContents )
-import qualified Streamly.Internal.Data.Stream.StreamD.Type
-                                               as D
+import           Streamly.Memory.Array
+import           System.IO                      ( Handle
+                                                , hClose
+                                                )
+import           System.IO.Unsafe
 import           System.Posix.ByteString
-import           System.Posix.Foreign           ( DirType )
 import           System.Posix.Directory.ByteString
                                                as PosixBS
-import           Prelude                 hiding ( readFile )
+import           System.Posix.Foreign           ( DirType )
+import           System.Posix.RawFilePath.Directory.Traversals
+                                         hiding ( getDirectoryContents )
+import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Lazy          as L
+import qualified Data.ByteString.Lazy.Internal as BSLI
+import qualified Streamly.External.ByteString  as Strict
+import qualified Streamly.FileSystem.Handle    as FH
+import qualified Streamly.Internal.Data.Stream.StreamD.Type
+                                               as D
+import qualified Streamly.Internal.Data.Unfold as SIU
+import qualified Streamly.Internal.Prelude     as S
 
 
 -- |Read the given file lazily as a lazy ByteString.
@@ -82,7 +82,7 @@ readFileLBS handle' = fromChunks (readFileStream handle')
 readFileStream :: (MonadCatch m, MonadAsync m)
                => Handle
                -> SerialT m (Array Word8)
-readFileStream = S.unfold (SIU.finallyIO (\h -> liftIO (putStrLn "close readFileStream") >> liftIO (hClose h)) FH.readChunks)
+readFileStream = S.unfold (SIU.finallyIO (liftIO . hClose) FH.readChunks)
 
 
 -- | Like 'copyFileStream', except for two file handles.
@@ -102,7 +102,8 @@ copyFileStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                -> Handle                  -- ^ file handle to copy to, must be writable
                -> m ()
 copyFileStream stream handle' =
-  (flip finally) (liftIO $ hClose handle') $ S.fold (FH.writeChunks handle') stream
+  (flip finally) (liftIO $ hClose handle')
+    $ S.fold (FH.writeChunks handle') stream
 
 
 -- | Create an 'Unfold' of directory contents.
@@ -136,5 +137,4 @@ dirContentsStream =
 dirContents :: (MonadCatch m, MonadAsync m, MonadMask m)
             => DirStream
             -> m [(DirType, RawFilePath)]
-dirContents = S.toList . S.unfold
-  (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents)
+dirContents = S.toList . dirContentsStream
