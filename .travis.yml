@@ -30,7 +30,7 @@ script:
  - cabal build --enable-tests all
  - cabal test all
  - cabal haddock --haddock-hyperlink-source --haddock-html-location=https://hackage.haskell.org/package/\$pkg-\$version/docs/ all
- - cabal install --lib all
+# - cabal install --lib all
 
 notifications:
   email:
