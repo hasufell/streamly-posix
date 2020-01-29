@@ -1,0 +1,6 @@
+packages: ./streamly-filesystem.cabal
+
+source-repository-package
+    type: git
+    location: https://github.com/composewell/streamly.git
+    tag: 753d091b75bd0d493b130a7eb66b283a949994e3
