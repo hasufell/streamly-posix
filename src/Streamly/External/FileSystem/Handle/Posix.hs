@@ -19,6 +19,7 @@ module Streamly.External.FileSystem.Handle.Posix
   -- * File writing
   , copyFileHandle
   , copyFileStream
+  , copyLBS
   -- * Directory listing
   , unfoldDirContents
   , dirContentsStream
@@ -51,6 +52,8 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as L
 import qualified Data.ByteString.Lazy.Internal as BSLI
 import qualified Streamly.External.ByteString  as Strict
+import qualified Streamly.External.ByteString.Lazy
+                                               as Lazy
 import qualified Streamly.FileSystem.Handle    as FH
 import qualified Streamly.Internal.Data.Stream.StreamD.Type
                                                as D
@@ -79,6 +82,7 @@ readFileLBS handle' = fromChunks (readFileStream handle')
 --
 -- The handle is closed automatically, when the stream exits normally,
 -- aborts or gets garbage collected.
+-- The stream must not be used after the handle is closed.
 readFileStream :: (MonadCatch m, MonadAsync m)
                => Handle
                -> SerialT m (Array Word8)
@@ -106,6 +110,16 @@ copyFileStream stream handle' =
     $ S.fold (FH.writeChunks handle') stream
 
 
+-- | Like 'copyFileStream', except with a lazy bytestring.
+--
+-- The handle is closed automatically after the bytestring is copied.
+copyLBS :: (MonadCatch m, MonadAsync m, MonadMask m)
+        => L.ByteString -- ^ lazy bytestring to copy
+        -> Handle       -- ^ file handle to copy to, must be writable
+        -> m ()
+copyLBS lbs = copyFileStream (Lazy.toChunks lbs)
+
+
 -- | Create an 'Unfold' of directory contents.
 unfoldDirContents :: MonadIO m => Unfold m DirStream (DirType, RawFilePath)
 unfoldDirContents = Unfold step return
@@ -124,6 +138,7 @@ unfoldDirContents = Unfold step return
 --
 -- The DirStream is closed automatically, when the streamly stream exits
 -- normally, aborts or gets garbage collected.
+-- The stream must not be used after the dirstream is closed.
 dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                   => DirStream
                   -> SerialT m (DirType, RawFilePath)
