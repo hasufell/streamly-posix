@@ -14,7 +14,7 @@ category:            Streaming
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
-library
+library streamly-filesystem
   if os(windows) -- not supported yet
     build-depends: unbuildable<0
     buildable: False
