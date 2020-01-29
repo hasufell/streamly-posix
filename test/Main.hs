@@ -3,23 +3,16 @@
 
 module Main where
 
-import           Data.ByteString                ( ByteString )
-import           Data.Word                      ( Word8 )
 import           GHC.IO.Handle                  ( Handle )
-import           Streamly
-import           Streamly.FileSystem.Handle     ( readChunks )
-import           Streamly.Memory.Array          ( Array )
 import           System.IO                      ( openFile
                                                 , IOMode(ReadMode)
                                                 )
 import           System.IO.Temp                 ( withSystemTempFile )
 import           Test.Hspec
-import           Test.Hspec.QuickCheck
-
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Lazy          as BSL
 import           Streamly.External.FileSystem.Handle.Posix
-import qualified Streamly.Prelude              as S
+
 
 checkCopyLBS :: FilePath -> Handle -> IO ()
 checkCopyLBS filename handle' = do
@@ -45,7 +38,7 @@ checkCopyFileHandle from to = do
   copyLBS' content from
   copyFileHandle' from to
   fromContent <- readFileLBS from
-  toContent <- readFileLBS to
+  toContent   <- readFileLBS to
   (BSL.toStrict fromContent) `shouldBe` (BSL.toStrict toContent)
 
 
