@@ -1,8 +1,9 @@
+{-# LANGUAGE CPP              #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiWayIf       #-}
 
 -- |
--- Module      :  Streamly.External.FileSystem.DirStream.Posix
+-- Module      :  Streamly.External.Posix.DirStream
 -- Copyright   :  © 2020 Julian Ospald
 -- License     :  BSD3
 --
@@ -12,7 +13,7 @@
 --
 -- This module provides high-level file streaming API,
 -- working with directory streams (POSIX).
-module Streamly.External.FileSystem.DirStream.Posix
+module Streamly.External.Posix.DirStream
   (
   -- * Directory listing
     unfoldDirContents
@@ -38,7 +39,9 @@ import           System.Posix.RawFilePath.Directory.Traversals
 import qualified Data.ByteString               as BS
 import qualified Streamly.Internal.Data.Stream.StreamD.Type
                                                as D
+#if MIN_VERSION_streamly(0,7,1)
 import qualified Streamly.Internal.Data.Unfold as SIU
+#endif
 import qualified Streamly.Internal.Prelude     as S
 
 
@@ -64,8 +67,12 @@ unfoldDirContents = Unfold step return
 dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                   => DirStream
                   -> SerialT m (DirType, RawFilePath)
-dirContentsStream =
-  S.unfold (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents)
+dirContentsStream ds =
+#if MIN_VERSION_streamly(0,7,1)
+  S.unfold (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents) $ ds
+#else
+  S.finally (liftIO . PosixBS.closeDirStream $ ds) . S.unfold unfoldDirContents $ ds
+#endif
 
 
 -- | Read the directory contents strictly as a list.
