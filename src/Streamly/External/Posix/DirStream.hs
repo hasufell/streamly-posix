@@ -52,7 +52,7 @@ unfoldDirContents = Unfold step return
   {-# INLINE [0] step #-}
   step dirstream = do
     (typ, e) <- liftIO $ readDirEnt dirstream
-    return if
+    return $ if
       | BS.null e                       -> D.Stop
       | BS.pack [_period] == e          -> D.Skip dirstream
       | BS.pack [_period, _period] == e -> D.Skip dirstream
