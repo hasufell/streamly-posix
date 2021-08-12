@@ -28,8 +28,6 @@ import           Control.Monad.IO.Class         ( liftIO
                                                 )
 import           Data.Word8
 import           Prelude                 hiding ( readFile )
-import           Streamly
-import           Streamly.Internal.Data.Unfold.Types
 import           System.Posix.ByteString
 import           System.Posix.Directory.ByteString
                                                as PosixBS
@@ -42,7 +40,14 @@ import qualified Streamly.Internal.Data.Stream.StreamD.Type
 #if MIN_VERSION_streamly(0,7,1)
 import qualified Streamly.Internal.Data.Unfold as SIU
 #endif
+#if MIN_VERSION_streamly(0,8,0)
+import           Streamly.Prelude
+import           Streamly.Internal.Data.Unfold.Type
+#else
+import           Streamly
+import           Streamly.Internal.Data.Unfold.Types
 import qualified Streamly.Internal.Prelude     as S
+#endif
 
 
 -- | Create an 'Unfold' of directory contents.
@@ -68,10 +73,14 @@ dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                   => DirStream
                   -> SerialT m (DirType, RawFilePath)
 dirContentsStream ds =
+#if MIN_VERSION_streamly(0,8,0)
+  unfold (SIU.finally (liftIO . PosixBS.closeDirStream) unfoldDirContents) $ ds
+#else
 #if MIN_VERSION_streamly(0,7,1)
   S.unfold (SIU.finallyIO (liftIO . PosixBS.closeDirStream) unfoldDirContents) $ ds
 #else
   S.finally (liftIO . PosixBS.closeDirStream $ ds) . S.unfold unfoldDirContents $ ds
+#endif
 #endif
 
 
@@ -81,5 +90,9 @@ dirContentsStream ds =
 dirContents :: (MonadCatch m, MonadAsync m, MonadMask m)
             => DirStream
             -> m [(DirType, RawFilePath)]
+#if MIN_VERSION_streamly(0,8,0)
+dirContents = toList . dirContentsStream
+#else
 dirContents = S.toList . dirContentsStream
+#endif
 
