@@ -1,6 +1,6 @@
 cabal-version:      >=1.10
 name:               streamly-posix
-version:            0.1.0.1
+version:            0.1.0.2
 license:            BSD3
 license-file:       LICENSE
 copyright:          Julian Ospald <hasufell@posteo.de> 2020
