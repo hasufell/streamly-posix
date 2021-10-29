@@ -26,15 +26,13 @@ import           Control.Exception.Safe
 import           Control.Monad.IO.Class         ( liftIO
                                                 , MonadIO
                                                 )
-import           Data.Word8
 import           Prelude                 hiding ( readFile )
 import           System.Posix.ByteString
 import           System.Posix.Directory.ByteString
                                                as PosixBS
 import           System.Posix.Foreign           ( DirType )
-import           System.Posix.RawFilePath.Directory.Traversals
+import           System.Posix.PosixFilePath.Directory.Traversals
                                          hiding ( getDirectoryContents )
-import qualified Data.ByteString               as BS
 import qualified Streamly.Internal.Data.Stream.StreamD.Type
                                                as D
 #if MIN_VERSION_streamly(0,7,1)
@@ -49,19 +47,21 @@ import           Streamly.Internal.Data.Unfold.Types
 import qualified Streamly.Internal.Prelude     as S
 #endif
 
+import AFP.AbstractFilePath.Posix
+
 
 -- | Create an 'Unfold' of directory contents.
-unfoldDirContents :: MonadIO m => Unfold m DirStream (DirType, RawFilePath)
+unfoldDirContents :: MonadIO m => Unfold m DirStream (DirType, PosixFilePath)
 unfoldDirContents = Unfold step return
  where
   {-# INLINE [0] step #-}
   step dirstream = do
     (typ, e) <- liftIO $ readDirEnt dirstream
     return $ if
-      | BS.null e                       -> D.Stop
-      | BS.pack [_period] == e          -> D.Skip dirstream
-      | BS.pack [_period, _period] == e -> D.Skip dirstream
-      | otherwise                       -> D.Yield (typ, e) dirstream
+      | e == mempty                                            -> D.Stop
+      | [fromChar '.'] == unpackPlatformString e               -> D.Skip dirstream
+      | [fromChar '.', fromChar '.'] == unpackPlatformString e -> D.Skip dirstream
+      | otherwise                                              -> D.Yield (typ, e) dirstream
 
 
 -- | Read the directory contents as a stream.
@@ -71,7 +71,7 @@ unfoldDirContents = Unfold step return
 -- The stream must not be used after the dirstream is closed.
 dirContentsStream :: (MonadCatch m, MonadAsync m, MonadMask m)
                   => DirStream
-                  -> SerialT m (DirType, RawFilePath)
+                  -> SerialT m (DirType, PosixFilePath)
 dirContentsStream ds =
 #if MIN_VERSION_streamly(0,8,0)
   unfold (SIU.finally (liftIO . PosixBS.closeDirStream) unfoldDirContents) $ ds
@@ -89,7 +89,7 @@ dirContentsStream ds =
 -- The DirStream is closed automatically.
 dirContents :: (MonadCatch m, MonadAsync m, MonadMask m)
             => DirStream
-            -> m [(DirType, RawFilePath)]
+            -> m [(DirType, PosixFilePath)]
 #if MIN_VERSION_streamly(0,8,0)
 dirContents = toList . dirContentsStream
 #else
